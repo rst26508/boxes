@@ -1,166 +1,325 @@
+# Copyright (C) 2013-2016 Florian Festi
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 from boxes import *
-from boxes import edges
-from math import pi, sin, ceil
+from math import pi, sin, cos, ceil
 import numpy as np
 
 class Axle(Boxes):
-    """Axle generator for filament spools with hexagonal rings and side panels."""
-    def __init__(self):
-        super().__init__()
+    """An axle, initially for a set of filament spools"""
+
+    description = """
+Use small nails to properly align the pieces of the bayonet latch. Glue the parts of the bayonet latch before assembling the "axle". The inner parts go at the side and the outer parts at the inside of the axle.
+![opened spool](static/samples/Axle.jpg)"""
+
+    ui_group = "Misc"
+
+    def __init__(self) -> None:
+        Boxes.__init__(self)
+
         self.addSettingsArgs(edges.FingerJointSettings)
-        self.axle_debug = True
-        self.debug_labels = True
-        if self.axle_debug: print("FingerJointSettings accessed.")
-        self.argparser.add_argument("--axle_outer_diameter", type=float, default=70.0, help="Outer diameter (mm)")
-        self.argparser.add_argument("--total_length", type=float, default=575.0, help="Total length (mm)")
-        self.argparser.add_argument("--material_length", type=float, default=410.0, help="Max segment length (mm)")
-        self.argparser.add_argument("--pass_through_diameter", type=float, default=48.0, help="Inner diameter (mm)")
-        self.argparser.add_argument("--sides", type=int, default=6, help="Number of sides")
-        self.argparser.add_argument("--recess_depth", type=float, default=12.0, help="Recess depth (mm)")
-        self.argparser.add_argument("--max_spacing", type=float, default=150.0, help="Max ring spacing (mm)")
-
-    def set_text_engrave(self): self.ctx.save(); self.ctx.set_source_rgb(0, 0, 1)
-    def reset_cut(self): self.ctx.set_source_rgb(0, 0, 0); self.ctx.restore()
-
-    def populate_holes(self, piece_lengths, ring_positions, total_length, order="forward"):
-        """Generate hole positions, adjusting rings to avoid joints."""
-        if self.axle_debug: print(f"Generating holes in {order} order")
-        t, num_pieces = self.thickness, len(piece_lengths)
-        pieces_holes, max_holes = [], 0
-        piece_indices = range(num_pieces) if order == "forward" else range(num_pieces - 1, -1, -1)
-        ring_positions_adjusted, adjustments = ring_positions.copy(), {}
-
-        safety_zone = (2 * t) + t
-        for j in piece_indices:
-            piece_length = piece_lengths[j]
-            subtract_value = sum(piece_lengths[:j]) - (j * t) if order == "forward" else total_length - sum(piece_lengths[j + 1:]) - (j * t)
-            if self.axle_debug: print(f"Piece {j}: length = {piece_length:.2f} mm, subtract_value = {subtract_value:.2f}")
-            piece_holes = []
-            start_pos, end_pos = subtract_value if order == "forward" else subtract_value - piece_length, subtract_value + piece_length
-            for idx, ring_pos in enumerate(ring_positions):
-                if start_pos <= ring_pos < end_pos:
-                    relative_pos = ring_pos - start_pos
-                    if order == "forward":
-                        min_pos, max_pos = max(self.recess_depth, safety_zone), piece_length - max(safety_zone, self.recess_depth)
-                        if not (min_pos <= relative_pos <= max_pos):
-                            relative_pos = max(min_pos, min(max_pos, relative_pos))
-                            new_ring_pos = round(start_pos + relative_pos, 2)
-                            if ring_pos not in adjustments or min(abs(ring_pos - start_pos), abs(ring_pos - end_pos)) < adjustments[ring_pos][1]:
-                                adjustments[ring_pos] = (new_ring_pos, min(abs(ring_pos - start_pos), abs(ring_pos - end_pos)))
-                    elif order == "reverse" and ring_pos in adjustments:
-                        offset = adjustments[ring_pos][0] - ring_pos
-                        new_ring_pos = ring_pos + offset
-                        safe = all(max(self.recess_depth, safety_zone) > (new_ring_pos - adj_start_pos) or (new_ring_pos - adj_start_pos) > piece_lengths[adj_j] - max(safety_zone, self.recess_depth)
-                                  for adj_j in range(num_pieces)
-                                  for adj_start_pos in [sum(piece_lengths[:adj_j]) - (adj_j * t) if adj_j <= j else total_length - sum(piece_lengths[adj_j + 1:]) - (adj_j * t) + piece_lengths[adj_j]])
-                        relative_pos = new_ring_pos - start_pos if safe else relative_pos
-                    if self.axle_debug: print(f"Ring_Pos : {ring_pos:.2f}, relative_pos : {relative_pos:.2f}")
-                    piece_holes.append(round(relative_pos, 2))
-            max_holes = max(max_holes, len(piece_holes))
-            pieces_holes.append(piece_holes) if order == "forward" else pieces_holes.insert(0, piece_holes)
+     #   self.buildArgParser(h=48)
         
-        for i in range(num_pieces): pieces_holes[i].extend([None] * (max_holes - len(pieces_holes[i])))
-        if self.axle_debug and order == "forward":
-            for idx, ring_pos in enumerate(ring_positions):
-                if ring_pos in adjustments: print(f"Final adjustment: {ring_pos:.2f} to {ring_positions_adjusted[idx]:.2f}")
-        return pieces_holes, ring_positions_adjusted
+     #   print("edges.FingerJointSettings successfully accessed.")
+        self.argparser.add_argument(
+            "--outer_diameter", action="store", type=float, default=70.0,
+            help="Outer diameter of the axle (mm)"
+        )
+        self.argparser.add_argument(
+            "--total_length", action="store", type=float, default=577.0,
+            help="Total length of the axle (mm)"
+        )
+        self.argparser.add_argument(
+            "--material_length", action="store", type=float, default=385.0,
+            help="Maximum material length per segment (mm)"
+        )
+        self.argparser.add_argument(
+            "--pass_through_diameter", action="store", type=float, default=48.0,
+            help="Inner diameter for mounting or pass-through (mm)"
+        )
+        self.argparser.add_argument(
+            "--sides", action="store", type=int, default=8,
+            help="Number of sides for the outer part of the rings"
+        )
+        self.argparser.add_argument(
+            "--recess_depth", action="store", type=float, default=12.0,
+            help="Depth of recess for end rings (mm), applied to side panels"
+        )
+        self.argparser.add_argument(
+            "--max_spacing", action="store", type=float, default=150.0,
+            help="Maximum spacing between support rings (mm)"
+        )
+        self.argparser.add_argument(
+            "--solid_bottom",  action="store", type=BoolArg(), default=False,
+            help="Skips the hole in one support ring to use it as an vertical holder."
+        )
+        self.argparser.add_argument(
+            "--panel_labels",  action="store", type=BoolArg(), default=False,
+            help="Prints the side number:panel number on each panel."
+        )
+        self.argparser.add_argument(
+            "--debug_flag",  action="store", type=BoolArg(), default=False,
+            help="Turn on/off most console output and some self.text"
+        )
+
+
+    piecelengths = []
+    ringpositions = []
+    adjustedholepositions = []
+    evenholepositions = []
+    oddholepositions = []
+    numRings = 2   
+    numpieces = 1
+    
+
+    
+    def pieceLengths(self):
+        ml = self.material_length
+        efml =  self.material_length - self.thickness  # Effective Material length. Finger joints are added to the specified length 
+        self.piecelengths = [min(self.material_length - self.thickness, self.total_length)]
+        self.numpieces = 1
+        while (sum(self.piecelengths) <= self.total_length - ((self.numpieces) * self.thickness)):
+            if sum(self.piecelengths) < self.total_length - ((self.numpieces) * self.thickness) - (ml - ( 2 * self.thickness)):
+                if self.debug_flag == True: print(f" Appending piece of length {ml - ( 2 * self.thickness):.2f}")
+                self.piecelengths.append(ml - ( 2 * self.thickness))
+            else:
+                self.piecelengths.append(self.total_length - sum(self.piecelengths) - ((self.numpieces) * self.thickness))
+            self.numpieces += 1
+        if self.debug_flag == True: print(f"Requested total length : {self.total_length:.2f}, Total pieces length : {sum(self.piecelengths):.2f}, join allowance : {(self.numpieces - 1) * self.thickness:.2f} and numpieces of {self.numpieces}")
+        
+    def ringPositions(self, order="forward"):
+        standard_spacing = (self.total_length - (2 * self.recess_depth)) / (self.numRings - 1)
+        ringpositions = []
+        ringnumber = 0
+        if order == "forward": 
+            rings = range(self.numRings)
+        else: # reverse
+          #  rings = reverse(range(self.numRings))  alternatively from itertools import reversed
+            rings = range(self.numRings)[::-1]
+        for i in rings:
+            if self.debug_flag == True: print(f"Ring Number : {i}")
+            if sum(ringpositions[:i]) + standard_spacing >= sum(self.piecelengths[:ringnumber]):
+                ringnumber += 1
+            if i == 0: # Left hand end in forward direction
+                if self.debug_flag == True: print(f"  Ring at {self.recess_depth:.2f}")
+                ringpositions.append(self.recess_depth)
+            else: # 
+                if self.debug_flag == True: print(f"  Ring B at {(standard_spacing * i) + self.recess_depth:.2f}")
+                ringpositions.append((standard_spacing * i) + self.recess_depth)
+        return np.array(ringpositions, dtype=object)
+        
+
+    def populate_holes(self, piecelengths, ringpositions, total_length, order="forward"):
+        """Generate hole positions for pieces, in forward or reverse order."""
+        if self.debug_flag == True: 
+            print("")
+            print(f"Generating hole positions in the {order} order")
+        pieces_holes = []
+        max_holes = 0
+        piece_indices = range(self.numpieces) if order == "forward" else reversed(range(self.numpieces))
+        if self.debug_flag == True: print(f"Piece indices {piece_indices}")
+        if order == "forward":
+            ring_positions_adjusted = ringpositions.copy()  # Copy to store adjustments
+        else:
+            ring_positions_adjusted = ringpositions[::-1]
+        
+        for j in range(self.numpieces):
+            piece_length = piecelengths[j]
+            if order == "forward":
+                subtract_value = sum(piecelengths[:j]) + ( j * self.thickness )
+            else:  # reverse
+                if self.debug_flag == True: print(f"  Total Length : {total_length:.2f}, sum piecelength : {sum(piecelengths[j:]):.2f}, numpieces : {self.numpieces}, j : {j}, thickness : {self.thickness}, piece length : {piece_length}")
+                subtract_value = sum(piecelengths[:j]) + piecelengths[j] + ( j * self.thickness )
+                
+            if self.debug_flag == True: print(f"  Piece {j}: length = {piece_length:.2f} mm, subtract_value = {subtract_value:.2f}")
+            piece_holes = []
+            
+            for i in range(self.numRings):
+                ring_pos = ringpositions[i]
+                if self.debug_flag == True: print(f"    Index {i}, ring position = {ring_pos:.2f}")
+
+                # 
+                if i == 0:
+                    forward_test_value = subtract_value + piece_length + self.thickness
+                    reverse_test_value = subtract_value - piece_length + self.thickness
+                elif i == self.numRings - 1:
+                    forward_test_value = subtract_value + piece_length + self.thickness
+                    reverse_test_value = subtract_value - piece_length + self.thickness
+                else:
+                    forward_test_value = subtract_value + piece_length + (2 * self.thickness)
+                    reverse_test_value = subtract_value - piece_length + (2 * self.thickness)
+                if self.debug_flag == True: print(f"forward_test_value : {forward_test_value:.2f}, reverse_test_value : {reverse_test_value:.2f}")
+                       
+                if (ring_pos >= subtract_value and ring_pos <= forward_test_value and order == "forward") or (ring_pos <= subtract_value and ring_pos >= reverse_test_value and order == "reverse"):
+                    if order == "forward":
+                        relative_pos = ring_pos - subtract_value
+                    else:
+                        relative_pos = subtract_value - ring_pos
+                    if self.debug_flag == True: print(f"      Relative Position : {relative_pos:.2f}")
+                    original_relative_pos = relative_pos
+                    # Adjustment block. Only used on the forward trace and when a ring position is too close to a joint
+                    if order == "forward":
+                        if relative_pos < max(self.recess_depth, (3 * self.thickness)):
+                            relative_pos = max(self.recess_depth, (3 * self.thickness))
+                            new_ring_pos = relative_pos
+                        elif relative_pos > min(piece_length - ((3 * self.thickness)), piece_length - self.recess_depth):
+                            # This is not working correctly for some situations. Further analysis is needed.
+                            # eg tl = 300, ml close to 150 and max ring spacing of 150
+                            new_ring_pos = ring_pos + (4 * self.thickness)
+                            relative_pos = relative_pos - (4 * self.thickness) 
+                        if relative_pos != original_relative_pos and order == "forward":
+                            # Update ring_positions_adjusted
+                            if self.debug_flag == True: print(f"    Adjusting ring_pos {ring_pos:.2f} to {relative_pos:.2f} and {new_ring_pos:.2f} for Piece {j}")
+                            ringpositions[i] = relative_pos
+                            ring_positions_adjusted[i] = new_ring_pos
+                    piece_holes.append(round(relative_pos, 2))
+                    if self.debug_flag == True: print(f"      Ring_Pos : {ring_pos:.2f}, relative_pos : {relative_pos:.2f}")
+                else:
+                    if self.debug_flag == True: print("      Not on this piece")
+            max_holes = max(max_holes, len(piece_holes))
+            if order == "forward":
+                pieces_holes.append(piece_holes)
+            else:
+                pieces_holes.append(piece_holes[::-1])
+        
+        # Pad with None
+        for i in range(self.numpieces):
+            while len(pieces_holes[i]) < max_holes:
+                pieces_holes[i].append(None)
+        
+        return np.array(pieces_holes, dtype=object), np.array(ring_positions_adjusted, dtype=object)
+        
+    def create_holes(self, sideno, pieceno, side_width, holepositions):
+        hole_diameter = 0 #2 * self.thickness
+        hole_y = 0 #- (side_width / 6) # (self.thickness * 2)
+        hole_length = side_width + (2 * self.thickness)
+        piece_length = self.piecelengths[pieceno]
+
+        # Copied from filamentspool. With some tweaking of the call to fingerHolesAt the side value
+        # appears to do well with matching finger holes to the fingers generated on the support rings
+        r, h, side = self.regularPolygon(self.sides, radius=(self.outer_diameter - 2 * self.thickness)/2)
+        
+        label = f"{sideno}:{pieceno}"
+        label_x = piece_length / 2
+        label_fontsize =  (ceil(side/2))
+        # Y positioning is not understood and needs work. This seems like a reasonable compromise for 3 to 10 sides
+        label_y = self.thickness * 1.5
+        if self.debug_flag == True: print(f"Pieces Matrix {self.piecelengths}, piece no {pieceno}")
+        if self.debug_flag == True: print(f"  Hole Positions : {holepositions}")
+
+        if self.debug_flag == False and self.panel_labels == True: self.text(label, label_x, label_y, align="middle center", fontsize=label_fontsize, color=Color.ANNOTATIONS)
+        for hole_pos in holepositions:
+            if hole_pos is not None:
+                x_hole = float(hole_pos)
+                    
+                if self.debug_flag == True: 
+                    print(f"  Hole at {x_hole:.2f}")
+                    if self.debug_flag == True: self.text(f"{x_hole:.2f}", x_hole + 8, label_y)
+                if x_hole >= self.recess_depth and x_hole <= piece_length - self.recess_depth:
+                    self.fingerHolesAt(x_hole, -self.thickness, side + (2 * self.thickness), 90)
+                else:
+                    if self.debug_flag == True: print("    Failed recess depth, proximity to joint test")
+
+    def print_new_pass_through(self, pass_through_changed):
+        if pass_through_changed == True:
+            label = f"{self.pass_through_diameter:.2f}"
+            label_x = -(self.pass_through_diameter/4)
+            label_y = -(self.pass_through_diameter/9)
+            label_fontsize =  (ceil(self.pass_through_diameter/5))
+            self.text(label,label_x,label_y, fontsize=label_fontsize, color=Color.ANNOTATIONS)
+            
+    def print_piece_length(self, piecelength):
+        if self.debug_flag == True:
+            self.text(f"{piecelength:.2f}", 30, 0, color=Color.ANNOTATIONS)
 
     def render(self):
-        """Render axle with panels and rings."""
-        od, tl, ml, pd, s, rd, ms = self.axle_outer_diameter, self.total_length, self.material_length, self.pass_through_diameter, self.sides, self.recess_depth, self.max_spacing
         t = self.thickness
-        if self.axle_debug: print(f"Render started - Parameters: od={od}, tl={tl}, ml={ml}, pd={pd}, s={s}, rd={rd}, ms={ms}, t={t}")
+        # Clearing arrays as some arrays were growing between runs of render
+        self.piecelengths.clear()
+        self.ringpositions.clear()
+        self.adjustedholepositions.clear()
+        self.evenholepositions.clear()
+        self.oddholepositions.clear()
+        pass_through_changed = False
+        
+        # Check and ajust inner diameter if not a safe distance from the outer edge
+        r = (self.outer_diameter / 2) - self.thickness
+        min_distance = r * math.cos(math.pi / self.sides)
+        safe_inner_diameter = 2 * (min_distance - self.thickness)
+        if self.pass_through_diameter > safe_inner_diameter:
+            self.pass_through_diameter = safe_inner_diameter
+            pass_through_changed = True
+        
+        self.numRings = max(2, ceil((self.total_length - (2 * self.recess_depth))/ self.max_spacing) + 1)
+        if self.debug_flag == True: print(f"Num Rings : {self.numRings}")
+        self.pieceLengths ()
+        ringpositions = self.ringPositions()
+        # Generate hole matrices
+        self.evenholepositions, ring_positions_adjusted = self.populate_holes(self.piecelengths, ringpositions, self.total_length, order="forward")
 
-        self.ctx.save()
-        if self.axle_debug: print("Context saved")
-        current_y = od + 10  # Initialize current_y here
+        if self.debug_flag == True: 
+            print(f"  Even Hole Positions Matrix")
+            print(self.evenholepositions)
+        self.oddholepositions = self.populate_holes(self.piecelengths, ring_positions_adjusted, self.total_length, order="reverse")[0]  # Only need holes
 
-        # Calculate number of support rings
-        if self.axle_debug: print("Before num_rings calculation")
-        base_rings = max(2, ceil((tl - 2 * rd) / ms) + 1)
-        if self.axle_debug: print(f"Base rings: {base_rings}")
-        num_rings = base_rings
-        if (num_rings - 1) * ms < (tl - 2 * rd):
-            num_rings += 1
-        if self.axle_debug: print(f"Num_rings after adjustment: {num_rings}")
-        ring_spacing = (tl - 2 * rd) / (num_rings - 1) if num_rings > 1 else (tl - 2 * rd)
-        if self.axle_debug: print(f"Ring spacing: {ring_spacing:.2f}")
+        if self.debug_flag == True: 
+            print("   Odd Hole Positions Matrix")
+            print(self.oddholepositions)
+        
+        r_outer = (self.outer_diameter / 2) - self.thickness
+        side_width = 2 * r_outer * sin(pi / self.sides)
+        
+        # Create the support rings
+        for i in range(self.numRings):
+            if self.solid_bottom == True and i == 0:
+                self.regularPolygonWall(
+                    self.sides, r=self.outer_diameter/2, edges="f",
+                    move="down")
+            else:
+                self.regularPolygonWall(
+                    self.sides, r=self.outer_diameter/2, edges="f",hole=self.pass_through_diameter,
+                    callback=[lambda:self.print_new_pass_through(pass_through_changed)],
+                    move="down")
 
-        # Compute side panel dimensions
-        r_outer = (od / 2) - t
-        side_length = 2 * r_outer * sin(pi / s)
-        num_pieces = ceil(tl / ml)
-        total_joint_loss = (num_pieces - 1) * t
-        piece_lengths = [ml] * (num_pieces - 1) + [tl - ((num_pieces - 1) * ml) + total_joint_loss]
-        if self.axle_debug: print(f"Side width: {side_length:.2f} mm, Lengths: {piece_lengths}")
+        self.moveTo(self.outer_diameter + (5 * self.thickness), 0)
 
-        # Calculate absolute ring positions and add parameter info rectangle
-        ring_positions = [round(rd, 2)]
-        for i in range(1, num_rings - 1):
-            ring_positions.append(round(ring_positions[-1] + ring_spacing, 2))
-        ring_positions.append(round(tl - rd, 2))
-        if self.axle_debug: print(f"Ring Positions: {ring_positions}")
-        self.moveTo(10, current_y + (num_pieces * self.sides * (side_length + 10)) + 100)  # Position below panels
-        self.rectangularWall(200, 100, "e", callback=[], move="")
-        params_text = f"od={od:.1f}, tl={tl:.1f}, ml={ml:.1f}, pd={pd:.1f}, s={s}, rd={rd:.1f}, ms={ms:.1f}, t={t:.1f}"
-        self.set_text_engrave()
-        self.text(params_text, 100, 50, align="center")
-
-        # Generate hole positions for even and odd sides
-        even_holes, ring_positions_adjusted = self.populate_holes(piece_lengths, ring_positions, tl, "forward")
-        odd_holes = self.populate_holes(piece_lengths, ring_positions_adjusted, tl, "reverse")[0]
-
-        even_holes_matrix, odd_holes_matrix = np.array(even_holes, dtype=object), np.array(odd_holes, dtype=object)
-        if self.axle_debug:
-            print("Even Holes:", [f"{h:.2f}" if h else None for h in even_holes])
-            print("Odd Holes:", [f"{h:.2f}" if h else None for h in odd_holes])
-
-        x_panel_start, y_panel_base = 10.0, od + 10
-        for j in range(num_pieces):
-            piece_length = piece_lengths[j]
+        # Create the pieces for the sides
+        # Even numbered sides should run left to right
+        # Odd numbered sides right to left when assembled
+        for j in range(self.numpieces):
             for i in range(self.sides):
-                holes = odd_holes_matrix[j][::-1] if i % 2 else even_holes_matrix[j]
-                def create_holes(pos):
-                    self.reset_cut()
-                    hole_length = 32
-                    hole_diameter = 8
-                    hole_y = (side_length / 2) - (hole_length / 2)
-                    self.set_text_engrave()
-                    label, label_x, label_y = f"{i}:{j}", piece_length / 2, side_length / 2 - t
-                    self.text(label, label_x, label_y)
-                    if self.debug_labels:
-                        for h in holes:
-                            if h is not None and rd <= h <= piece_length - rd:
-                                self.text(f"{h:.2f}", h + 8, label_y)
-                    self.reset_cut()
-                    if self.axle_debug: print(f"Piece {j}, Side {i}: Holes={holes}, y={hole_y:.2f}, length={hole_length:.2f}")
-                    for h in holes:
-                        if h and rd <= h <= piece_length - rd:
-                            self.fingerHolesAt(h, hole_y, hole_length, 90)
-                is_even = i % 2 == 0
-                edge_type = edge_types[(is_even, j if j in (0, num_pieces - 1) else None)]
-                self.reset_cut()
-                self.rectangularWall(piece_length, side_length, edge_type,
-                                     callback=[lambda i: create_holes(x_panel_start + i * (piece_length + 10))],
-                                     move="down")
-            current_y += side_length + 10
-
-        x_ring_start, y_ring_start = x_panel_start, (num_pieces * self.sides * (side_length + 2)) + 3
-        self.moveTo(x_ring_start, y_ring_start)
-        if self.axle_debug: print(f"Starting ring loop with num_rings={num_rings}")
-        for i in range(num_rings):
-            self.current_pos = (x_ring_start + i * (od + 10.0), y_ring_start)
-            if self.axle_debug: print(f"Ring {i} at x={self.current_pos[0]}, y={self.current_pos[1]}")
-            try:
-                with self.saved_context():
-                    self.reset_cut()
-                    self.moveTo(0, 0)
-                    self.moveTo(-od, 0)
-                    self.regularPolygonWall(s, r=r_outer, edges="f", move="", hole=pd)
-                    if self.axle_debug: print(f"Ring {i} drawn")
-            except Exception as e:
-                if self.axle_debug: print(f"Ring error: {e}")
-            if i < num_rings - 1: self.moveTo(od + 10.0, 0)
-
-        self.ctx.restore()
-        if self.axle_debug: print("Render complete")
+                if self.debug_flag == True: print(f"j = {j}")
+                
+                    
+                if i % 2 == 0: # even side
+                    order = "forward"
+                    holepositions = self.evenholepositions[j].copy()
+                    if self.numpieces == 1:
+                        edgetype = "eeee"
+                    else:
+                        edgetype = "eFee" if j == 0 else "eeef" if j == len(self.piecelengths) - 1 else "eFef"
+                else: # Odd side
+                    order = "reverse"
+                    holepositions = self.oddholepositions[j].copy()
+                    if self.numpieces == 1:
+                        edgetype = "eeee"
+                    else:
+                        edgetype = "eeeF" if j == 0 else "efee" if j == len(self.piecelengths) - 1 else "efeF"
+                if self.debug_flag == True: print(f"Creating {order} Side no {i} edge piece {j} of length {self.piecelengths[j]} with edge type {edgetype}")
+                self.rectangularWall(
+                    self.piecelengths[j], side_width, edgetype,
+                    callback=[lambda:self.create_holes(i, j, side_width, holepositions),
+                    self.print_piece_length(self.piecelengths[j])],
+                    move="up")
